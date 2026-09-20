@@ -49,6 +49,7 @@ bash serve/12gb.sh Ternary-Bonsai-2-27B-PTQ1_0.gguf
 
 For the faster decode, build the `pr-ptq1-mmv` branch of github.com/sudoingX/llama.cpp with
 `cmake -B build -DGGML_CUDA=ON && cmake --build build -j`, then run the same serve line with that binary.
+Builds for sm_86 through sm_120 (the sm_90 and sm_120 host-stub failure at `5883186` is fixed in `2578fdf`).
 
 ## Two traps
 

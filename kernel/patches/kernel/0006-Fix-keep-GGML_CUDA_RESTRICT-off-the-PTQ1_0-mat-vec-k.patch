@@ -1,0 +1,40 @@
+From 2578fdfa33e1fd3e7b4196516717b5bc2ac7eda6 Mon Sep 17 00:00:00 2001
+From: sudoingX <200180104+sudoingX@users.noreply.github.com>
+Date: Sun, 20 Sep 2026 15:28:26 +0000
+Subject: [PATCH 1/2] Fix: keep GGML_CUDA_RESTRICT off the PTQ1_0 mat-vec
+ kernel signature
+
+The macro expands to __restrict__ in the host pass and to nothing in the
+Hopper-or-newer device pass when PDL is on, so the generated host stub for
+mul_mat_vec_ptq1_0_pt no longer matched its template declaration and the
+build failed for sm_90 and sm_120 (CUDA 12.8 with GCC 13.3, CUDA 13.0 with
+MSVC 14.44). Take plain pointers in the signature and alias them with
+GGML_CUDA_RESTRICT inside the body, as mul_mat_vec_q already does. No
+change in arithmetic.
+---
+ ggml/src/ggml-cuda/mmvq-ptq1_0.cuh | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/ggml/src/ggml-cuda/mmvq-ptq1_0.cuh b/ggml/src/ggml-cuda/mmvq-ptq1_0.cuh
+index 76604a6c3..ba31b179e 100644
+--- a/ggml/src/ggml-cuda/mmvq-ptq1_0.cuh
++++ b/ggml/src/ggml-cuda/mmvq-ptq1_0.cuh
+@@ -273,10 +273,16 @@ static __host__ int ptq1_0_pt_rows_per_cta(const int blocks_per_row, const int n
+ template <int ncols, int ROWS, bool has_fusion, bool has_gate>
+ __launch_bounds__(PTQ1_0_PT_THREADS, (ncols <= 2 ? 4 : (ncols <= 4 ? 3 : 2)))
+ static __global__ void mul_mat_vec_ptq1_0_pt(
+-        const void * GGML_CUDA_RESTRICT vx, const void * GGML_CUDA_RESTRICT vy, const ggml_cuda_mm_fusion_args_device fusion,
+-        float * GGML_CUDA_RESTRICT dst,
++        const void * vx_ptr, const void * vy_ptr, const ggml_cuda_mm_fusion_args_device fusion,
++        float * dst_ptr,
+         const int ncols_x, const int nrows_x, const int stride_row_x, const int stride_col_y, const int stride_col_dst,
+         const int rows_per_cta, const uint3 bpr_fd) {
++    // GGML_CUDA_RESTRICT stays off the formal parameters: it expands differently in the host pass and in
++    // the Hopper-or-newer device pass with PDL, and the generated host stub then fails to match the
++    // template. Same pattern as mul_mat_vec_q.
++    const void * GGML_CUDA_RESTRICT vx  = vx_ptr;
++    const void * GGML_CUDA_RESTRICT vy  = vy_ptr;
++    float      * GGML_CUDA_RESTRICT dst = dst_ptr;
+     extern __shared__ float partials_dyn[];
+     float * partials = partials_dyn;                                       // [ncols][rows_per_cta][bpr]
+     [[maybe_unused]] float * partials_gate = partials_dyn + ncols*rows_per_cta*(ncols_x / QK_PTQ1_0);

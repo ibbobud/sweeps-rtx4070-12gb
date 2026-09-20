@@ -1,0 +1,47 @@
+From 497ea283248bb3725577b57e0531c865a0a8bb45 Mon Sep 17 00:00:00 2001
+From: sudoingX <200180104+sudoingX@users.noreply.github.com>
+Date: Sun, 20 Sep 2026 15:28:26 +0000
+Subject: [PATCH 2/2] Docs: state the batch-invariance guarantee as 1 to 4
+ columns
+
+Whole-model bit-identical logits under GGML_CUDA_BATCH_INVARIANT=1 are
+established for batches of 1 to 4 columns; 5 to 8 agree with each other but
+can differ from 1 to 4. The comments promised 1 to 8.
+---
+ ggml/src/ggml-cuda/common.cuh | 6 ++++--
+ ggml/src/ggml-cuda/fattn.cu   | 5 +++--
+ 2 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/ggml/src/ggml-cuda/common.cuh b/ggml/src/ggml-cuda/common.cuh
+index 2600e6d86..3baa87327 100644
+--- a/ggml/src/ggml-cuda/common.cuh
++++ b/ggml/src/ggml-cuda/common.cuh
+@@ -174,8 +174,10 @@ static int ggml_cuda_highest_compiled_arch(const int arch) {
+ // ---------------------------------------------------------------------------------------------------------
+ 
+ // GGML_CUDA_BATCH_INVARIANT=1: prefer kernels whose per-column arithmetic does not depend on the
+-// number of columns in the batch (1 to 8), so that a token decoded alone and a token verified
+-// inside a speculative batch see the same logits bit for bit. Costs some throughput at 2 to 8 columns.
++// number of columns in the batch, so that a token decoded alone and a token verified inside a
++// speculative batch see the same logits bit for bit. Whole-model invariance is established for
++// batches of 1 to 4 columns; 5 to 8 columns agree with each other but can differ from 1 to 4.
++// Costs some throughput at 2 to 8 columns.
+ static inline bool ggml_cuda_batch_invariant() {
+     static const bool enabled = getenv("GGML_CUDA_BATCH_INVARIANT") != nullptr;
+     return enabled;
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index dacbe4884..b5042840d 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -460,8 +460,9 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+     // If Turing tensor cores are available, use them:
+     if (turing_mma_available(cc) && Q->ne[0] != 40 && Q->ne[0] != 72) {
+         if (can_use_vector_kernel) {
+-            // batch-invariant mode: the same (vector) kernel for 1 to 8 queries, so a token verified in a
+-            // speculative batch attends with the same arithmetic as a token decoded alone
++            // batch-invariant mode: the same (vector) kernel for up to 8 queries, so a token verified in a
++            // speculative batch attends with the same arithmetic as a token decoded alone (the whole-model
++            // guarantee is 1 to 4 queries, see ggml_cuda_batch_invariant)
+             if (ggml_cuda_batch_invariant() && Q->ne[1] <= 8 && Q->ne[3] == 1) {
+                 return BEST_FATTN_KERNEL_VEC;
+             }
